@@ -6,6 +6,9 @@ A minimal two-agent research application:
 2. **Report agent** — uses Groq to turn the research notes and source URLs into a structured Markdown report.
 3. **Frontend** — one `index.html`, served directly by FastAPI.
 
+
+LIVE DEMO LINK=[https://search-indol-three.vercel.app/]
+
 ## Setup
 
 ```bash
