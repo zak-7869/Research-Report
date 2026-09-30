@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Research Agent — LangGraph + Groq</title>
+  <style>
+    :root { --bg:#0b1020; --panel:#11182d; --border:#25304f; --text:#edf2ff; --muted:#9ba8c7; --accent:#7c9cff; --accent2:#9b7cff; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif; background:radial-gradient(circle at top, #172143 0, var(--bg) 45%); color:var(--text); }
+    .wrap { width:min(1180px,92vw); margin:0 auto; padding:56px 0 70px; }
+    header { margin-bottom:28px; }
+    .eyebrow { color:#aab8ff; font-size:12px; letter-spacing:.14em; text-transform:uppercase; font-weight:700; }
+    h1 { font-size:clamp(34px,5vw,62px); line-height:1; margin:12px 0; letter-spacing:-.04em; }
+    .sub { color:var(--muted); max-width:760px; font-size:17px; line-height:1.6; }
+    .search { display:flex; gap:10px; margin:26px 0 18px; }
+    input { flex:1; background:rgba(17,24,45,.9); border:1px solid var(--border); color:var(--text); padding:17px 18px; border-radius:14px; font-size:16px; outline:none; }
+    input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(124,156,255,.12); }
+    button { border:0; border-radius:14px; padding:0 22px; font-weight:800; color:white; background:linear-gradient(135deg,var(--accent),var(--accent2)); cursor:pointer; min-width:145px; }
+    button:disabled { opacity:.55; cursor:wait; }
+    .status { color:var(--muted); min-height:24px; font-size:14px; }
+    .grid { display:grid; grid-template-columns:1fr 1.7fr; gap:18px; margin-top:18px; }
+    .card { background:rgba(17,24,45,.82); border:1px solid var(--border); border-radius:18px; padding:22px; box-shadow:0 16px 50px rgba(0,0,0,.2); }
+    .card h2 { margin:0 0 15px; font-size:18px; }
+    .queries { display:flex; flex-direction:column; gap:9px; }
+    .query { padding:11px 12px; border-radius:10px; background:#0d1428; color:#cbd5f4; font-size:13px; }
+    .report { white-space:pre-wrap; line-height:1.7; color:#e8edff; }
+    .sources { margin-top:22px; }
+    .source { display:block; padding:12px 0; border-top:1px solid var(--border); color:#c9d3f6; text-decoration:none; }
+    .source:hover { color:white; }
+    .source small { display:block; color:var(--muted); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .empty { color:var(--muted); padding:35px 5px; text-align:center; }
+    @media (max-width:800px) { .grid { grid-template-columns:1fr; } .search { flex-direction:column; } button { height:52px; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div class="eyebrow">LangGraph · Groq · Web Research</div>
+      <h1>Research → Report</h1>
+      <div class="sub">Enter a topic. A LangGraph workflow plans searches, gathers web evidence, synthesizes the findings with Groq, and produces a structured report.</div>
+    </header>
+
+    <form id="form" class="search">
+      <input id="topic" maxlength="500" placeholder="e.g. The impact of AI agents on software development" autocomplete="off" />
+      <button id="run" type="submit">Research</button>
+    </form>
+    <div id="status" class="status"></div>
+
+    <section class="grid">
+      <aside class="card">
+        <h2>Research plan</h2>
+        <div id="queries" class="queries"><div class="empty">Your search queries will appear here.</div></div>
+        <div class="sources">
+          <h2>Sources</h2>
+          <div id="sources"><div class="empty">Sources will appear here.</div></div>
+        </div>
+      </aside>
+      <article class="card">
+        <h2>Report</h2>
+        <div id="report" class="report"><div class="empty">Run a research task to generate a report.</div></div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById('form');
+    const topic = document.getElementById('topic');
+    const run = document.getElementById('run');
+    const status = document.getElementById('status');
+    const report = document.getElementById('report');
+    const queries = document.getElementById('queries');
+    const sources = document.getElementById('sources');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const value = topic.value.trim();
+      if (!value) return;
+      run.disabled = true;
+      status.textContent = 'Research agent is working…';
+      report.innerHTML = '<div class="empty">Planning searches and collecting evidence…</div>';
+      queries.innerHTML = '<div class="empty">Working…</div>';
+      sources.innerHTML = '<div class="empty">Working…</div>';
+      try {
+        const res = await fetch('/api/research', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({topic:value})
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Request failed');
+        status.textContent = `Completed with ${data.sources.length} source(s).`;
+        queries.innerHTML = data.queries.map(q => `<div class="query">${escapeHtml(q)}</div>`).join('') || '<div class="empty">No queries returned.</div>';
+        report.textContent = data.report || 'No report returned.';
+        sources.innerHTML = data.sources.map(s => s.url
+          ? `<a class="source" href="${escapeAttr(s.url)}" target="_blank" rel="noopener noreferrer"><strong>${escapeHtml(s.title)}</strong><small>${escapeHtml(s.url)}</small></a>`
+          : `<div class="source"><strong>${escapeHtml(s.title)}</strong></div>`
+        ).join('') || '<div class="empty">No sources returned.</div>';
+      } catch (err) {
+        status.textContent = 'Something went wrong.';
+        report.textContent = err.message;
+      } finally {
+        run.disabled = false;
+      }
+    });
+
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])); }
+    function escapeAttr(s) { return String(s).replace(/"/g, '&quot;'); }
+  </script>
+</body>
+</html>
